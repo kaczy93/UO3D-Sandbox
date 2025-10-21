@@ -96,7 +96,7 @@ public class UORenderer : IDisposable
                     SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
         });
 
-        var verticesSize = terrainMeshSize * 4; //each tile has 4 vertices
+        var verticesSize = terrainMeshSize * 6; //each tile has 6 vertices
         vertexBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
         {
             size = verticesSize,
@@ -482,7 +482,7 @@ public class UORenderer : IDisposable
         
         SDL_BindGPUFragmentSamplers(renderPass, 0, [new SDL_GPUTextureSamplerBinding(){sampler = sampler, texture = myTexture}], 1);
         
-        SDL_DrawGPUPrimitives(renderPass, 64 * 6, 64*2, 0, 0);
+        SDL_DrawGPUPrimitives(renderPass, 64 * 6, 64 * 2, 0, 0);
         
         // SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
     }
