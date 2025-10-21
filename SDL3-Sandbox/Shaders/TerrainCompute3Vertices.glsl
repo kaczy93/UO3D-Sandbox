@@ -49,11 +49,11 @@ void main() {
     outputVertex.vertices[outputVertexIndex + 1] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + inputTile.y];
     outputVertex.vertices[outputVertexIndex + 1].NormalYZTexUV.zw = vec2(1,0);
     
-    outputVertex.vertices[outputVertexIndex + 2] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
-    outputVertex.vertices[outputVertexIndex + 2].NormalYZTexUV.zw = vec2(1,1);
+    outputVertex.vertices[outputVertexIndex + 2] = inputVertex.vertices[inputTile.x * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
+    outputVertex.vertices[outputVertexIndex + 2].NormalYZTexUV.zw = vec2(0,1);
     
-    outputVertex.vertices[outputVertexIndex + 3] = inputVertex.vertices[inputTile.x * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
-    outputVertex.vertices[outputVertexIndex + 3].NormalYZTexUV.zw = vec2(0,1);
+    outputVertex.vertices[outputVertexIndex + 3] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
+    outputVertex.vertices[outputVertexIndex + 3].NormalYZTexUV.zw = vec2(1,1);
 
     outputVertex.vertices[outputVertexIndex + 4] = outputVertex.vertices[outputVertexIndex + 2];
     outputVertex.vertices[outputVertexIndex + 5] = outputVertex.vertices[outputVertexIndex + 1];
