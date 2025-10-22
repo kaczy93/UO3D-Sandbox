@@ -72,11 +72,12 @@ public class UORenderer : IDisposable
         texmap = new Texmap(gpuDevice, manager.Texmaps);
         
         Console.WriteLine("Loading map");
+        //TODO: FIXME: It get's corrupted above 680x512
         terrain = new Terrain(680, 512);
         terrain.Load(manager.BasePath + "/map0.mul");
         
         Console.WriteLine("Preloading art");
-        //Preloading this art here as it creates it's own command buffer 
+        //Preloading art here as it creates it's own command buffer within TextureAtlas
         var distinctIds = terrain.Tiles.Select(t => t.Id).Distinct().ToArray();
         foreach (var i in distinctIds)
         {
@@ -401,6 +402,7 @@ public class UORenderer : IDisposable
             }
         }
 
+        //Stage1: Calculate WorldPos
         var computePass1 = SDL_BeginGPUComputePass(
             cmdBuffer,
             [],
@@ -418,7 +420,7 @@ public class UORenderer : IDisposable
         SDL_DispatchGPUCompute(computePass1, chunksToCompute, 1, 1);
         SDL_EndGPUComputePass(computePass1);
         
-        //Stage2
+        //Stage2: Calculate Normals
         var computePass2 = SDL_BeginGPUComputePass(
             cmdBuffer,
             [],
@@ -436,7 +438,7 @@ public class UORenderer : IDisposable
         SDL_DispatchGPUCompute(computePass2, chunksToCompute, 1, 1);
         SDL_EndGPUComputePass(computePass2);
         
-        //Stage3
+        //Stage3: Calculate vertexBuffer from terrainMesh
         var computePass3 = SDL_BeginGPUComputePass(
             cmdBuffer,
             [],
@@ -539,7 +541,7 @@ public class UORenderer : IDisposable
         if (chunksToCompute > 0)
         {
             ComputeTiles();
-            // chunksToCompute = 0;
+            chunksToCompute = 0;
         }
         var renderPass = BeginRenderPass();
         SDL_BindGPUGraphicsPipeline(renderPass, graphicsPipeline);
@@ -564,6 +566,7 @@ public class UORenderer : IDisposable
             SDL_PushGPUVertexUniformData(cmdBuffer, 0, (IntPtr)pMat4, (uint)(sizeof(float) * mat4.Length));
         }
 
+        //Ugly hack
         var artTextre = art.GetLand(3).Texture;
         var texTexture = texmap.GetTexmap(3).Texture;
         SDL_BindGPUFragmentSamplers(renderPass, 0, [
@@ -577,6 +580,7 @@ public class UORenderer : IDisposable
 
     public void EndDraw()
     {
+        //We need cmdBuffer always in case we want to copy or compute in Update()
         SDL_SubmitGPUCommandBuffer(cmdBuffer);
         cmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
     }
