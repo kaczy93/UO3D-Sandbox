@@ -8,7 +8,6 @@ namespace ClassicUO.Assets
 {
     public sealed class UOFileManager : IDisposable
     {
-
         public UOFileManager(ClientVersion clientVersion, string uoPath)
         {
             Version = clientVersion;

@@ -1,5 +1,4 @@
 using ClassicUO.Assets;
-using SDL3_Sandbox.UO;
 using static SDL3.SDL;
 
 namespace ClassicUO.Renderer.Arts
@@ -19,7 +18,6 @@ namespace ClassicUO.Renderer.Arts
             _realArtBounds = new SDL_Rect[_spriteInfos.Length];
         }
 
-        
         public ref readonly SpriteInfo GetLand(uint idx)
             => ref Get((uint)(idx & ~0x4000));
 

@@ -19,12 +19,6 @@ struct VertexVirt {
     vec4 NormalYZTexUV;
 };
 
-struct VertexReal {
-    vec3 Position;
-    vec3 Normal;
-    vec2 TexCoord;
-};
-
 layout(std140, set = 0, binding = 1) readonly buffer InVertexBuffer {
     VertexVirt[] vertices;
 } inputVertex;

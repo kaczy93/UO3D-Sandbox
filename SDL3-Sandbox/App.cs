@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SDL3_Sandbox.UO;
 using static SDL3.SDL;
 
 namespace SDL3_Sandbox;
@@ -10,7 +11,7 @@ public class App : IDisposable
     private IntPtr gpuDevice;
     private UORenderer renderer;
 
-    public void Init()
+    public void Init(ClientVersion clientVersion, string uoPath)
     {
         if (!SDL_Init(SDL_InitFlags.SDL_INIT_VIDEO))
         {
@@ -24,7 +25,7 @@ public class App : IDisposable
         SDL_ClaimWindowForGPUDevice(gpuDevice, windowHandle);
         
         renderer = new UORenderer(windowHandle, gpuDevice);
-        renderer.Init();
+        renderer.Init(clientVersion,uoPath);
     }
 
     private long prevTimestamp;
@@ -35,9 +36,7 @@ public class App : IDisposable
         {
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = timestamp - prevTimestamp;
-            var frameTime = Stopwatch.GetElapsedTime(prevTimestamp, timestamp).TotalMilliseconds;
             prevTimestamp = timestamp;
-            SDL_SetWindowTitle(windowHandle, $"SDL3-Sandbox - FrameTime:{frameTime:F2}ms");
             if (PollEvents(elapsed))
                 runApplication = false;
 
@@ -79,12 +78,7 @@ public class App : IDisposable
 
     private bool BeginDraw()
     {
-        if (renderer.NewFrame())
-        {
-            renderer.BeginDraw();
-            return true;
-        }
-        return false;
+        return renderer.BeginDraw();
     }
 
     private void Draw()

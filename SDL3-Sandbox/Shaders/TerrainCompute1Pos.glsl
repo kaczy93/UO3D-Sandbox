@@ -16,15 +16,10 @@ layout (std140, set = 0, binding = 0) readonly buffer InputBuffer {
     TerrainTile[] tiles;
 } inputData;
 
+//This is so weird, because storage buffers have to be std140 16-byte aligned and vec2 and vec3 got filled with padding bytes
 struct VertexVirt {
     vec4 PositionXYZNormalX;
     vec4 NormalYZTexUV;
-};
-
-struct VertexReal {
-    vec3 Position;
-    vec3 Normal;
-    vec2 TexCoord;
 };
 
 layout(std140, set = 1, binding = 0) buffer VertexBuffer {

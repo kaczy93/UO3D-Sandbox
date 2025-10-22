@@ -4,33 +4,25 @@ public class Terrain
 {
     private int _totalWidth = 896;
     private int _totalHeight = 512;
-    public int _width;
-    public int _height;
-    public TerrainTile[] _tiles;
+    public int Width;
+    public int Height;
+    public TerrainTile[] Tiles;
 
     public Terrain(int width, int height)
     {
-        _width = width;
-        _height = height;
-        _tiles = new TerrainTile[width * height * 64];
+        Width = width;
+        Height = height;
+        Tiles = new TerrainTile[width * height * 64];
     }
-
-    public int[] MapDimensions()
-    {
-        var dimensions =  new int[4];
-        dimensions[0] = _width;
-        dimensions[1] = _height;
-        return dimensions;
-    }
-
+    
     public void Load(string filePath)
     {
         using var stream = File.OpenRead(filePath);
         using var reader = new BinaryReader(stream);
         var globalIndex = 0;
-        for (var chunkY = 0; chunkY < _height; chunkY++)
+        for (var chunkY = 0; chunkY < Height; chunkY++)
         {
-            for (var chunkX = 0; chunkX < _width; chunkX++)
+            for (var chunkX = 0; chunkX < Width; chunkX++)
             {
                 stream.Seek((chunkX * _totalHeight + chunkY) * 196, SeekOrigin.Begin);
                 reader.ReadInt32(); //header
@@ -45,7 +37,8 @@ public class Terrain
                             Id = reader.ReadUInt16(),
                             Z = reader.ReadSByte(),
                         };
-                        _tiles[globalIndex] = tile;
+                        // _tiles[tile.X * _totalHeight + tile.Y] = tile;
+                        Tiles[globalIndex] = tile;
                         globalIndex++;
                     }
                 }

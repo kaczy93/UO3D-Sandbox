@@ -14,9 +14,10 @@ public class UORenderer : IDisposable
 {
     [StructLayout(LayoutKind.Sequential)]
     record struct Vertex(
-        float x, float y, float z, //POS
-        float nx, float ny, float nz, //Normals
-        float u, float v); //TextureUV
+        float X, float Y, float Z, //POS
+        float NX, float NY, float NZ, //Normals
+        float U, float V //TextureUV
+        ); 
 
     private IntPtr windowHandle;
     private IntPtr gpuDevice;
@@ -28,6 +29,7 @@ public class UORenderer : IDisposable
     private IntPtr terrainComputeStage1;
     private IntPtr terrainComputeStage2;
     private IntPtr terrainComputeStage3;
+    private IntPtr graphicsPipeline;
     
     private IntPtr cmdBuffer;
     private IntPtr swapchainTexture;
@@ -35,7 +37,9 @@ public class UORenderer : IDisposable
     private uint swapchainHeight;
     private IntPtr depthStencilTexture;
 
+    private uint chunksToCompute;
     private IntPtr computeInputBuffer;
+    private uint texInfoBufferSize;
     private IntPtr texInfoBuffer;
     private IntPtr terrainMeshBuffer;
     
@@ -43,10 +47,7 @@ public class UORenderer : IDisposable
     private IntPtr texSampler;
     
     private IntPtr vertexBuffer;
-
-    private IntPtr graphicsPipeline;
-    private IntPtr renderPass;
-
+    
     private Terrain terrain;
     private Camera camera;
 
@@ -56,26 +57,27 @@ public class UORenderer : IDisposable
         this.gpuDevice = gpuDevice;
     }
 
-    public void Init()
+    public void Init(ClientVersion clientVersion, string uoPath)
     {
-        float rsqrt2 = 0.70710678118654752440084436210485f;
-        float tileSize = 44 * rsqrt2;
         camera = new Camera();
+        var tileSize = 31.112698372f; //44 * rsqrt(2)
         camera.Position.X = 768 * 4 * tileSize;
         camera.Position.Y = 512 * 4 * tileSize;
-        camera.Zoom = 0.01f;
+        camera.Zoom = 0.005f;
+        
         Console.WriteLine("Loading UO Assets");
-        int maxLandId = 10; //We only need that much for testing
-        manager = new UOFileManager(ClientVersion.CV_706400, "/home/kaczy/nel/Ultima Online Classic_7_0_95_0_modified");
+        manager = new UOFileManager(clientVersion, uoPath);
         manager.Load();
         art = new Art(gpuDevice, manager.Arts);
         texmap = new Texmap(gpuDevice, manager.Texmaps);
+        
         Console.WriteLine("Loading map");
-        terrain = new Terrain(512, 512);
+        terrain = new Terrain(680, 512);
         terrain.Load(manager.BasePath + "/map0.mul");
+        
         Console.WriteLine("Preloading art");
-        var distinctIds = terrain._tiles.Select(t => t.Id).Distinct().ToArray();
-        Console.WriteLine($"Distinct land tile ids: {distinctIds.Length}");
+        //Preloading this art here as it creates it's own command buffer 
+        var distinctIds = terrain.Tiles.Select(t => t.Id).Distinct().ToArray();
         foreach (var i in distinctIds)
         {
             art.GetLand((uint)i);
@@ -89,7 +91,6 @@ public class UORenderer : IDisposable
             format = SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV,
             stage = SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_VERTEX,
             num_uniform_buffers = 1,
-            num_storage_buffers = 3
         });
         var fragmentShader = LoadShader("Shaders/TerrainFragment.spv", new()
         {
@@ -141,7 +142,7 @@ public class UORenderer : IDisposable
                 threadcount_z = 1,
             }
         );
-        var terrainComputeStage3 = CreateComputePipelineFromShader(
+        terrainComputeStage3 = CreateComputePipelineFromShader(
             "Shaders/TerrainCompute3Vertices.spv",
             new() {
                 num_uniform_buffers = 1,
@@ -153,7 +154,7 @@ public class UORenderer : IDisposable
             }
         );
         
-        //Create depth stencil
+        //Create depth-stencil texture
         depthStencilTexture = SDL_CreateGPUTexture(
             gpuDevice,
             new SDL_GPUTextureCreateInfo
@@ -170,36 +171,35 @@ public class UORenderer : IDisposable
         );
         
         //Prepare buffers
-        int INPUT_LENGTH = terrain._tiles.Length;
+        int inputLength = terrain.Tiles.Length;
 
-        var computeInputSize = (uint)(Unsafe.SizeOf<TerrainTile>() * INPUT_LENGTH);
-        computeInputBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
+        var computeInputSize = (uint)(Unsafe.SizeOf<TerrainTile>() * inputLength);
+        computeInputBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo
         {
             size = computeInputSize,
             usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
         });
         SDL_SetGPUBufferName(gpuDevice, computeInputBuffer, "Buffer ComputeInput");
 
-        var texInfoBufferSize = (uint)(sizeof(float) * 4 * 0x4000 * 2);
-        texInfoBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
+        texInfoBufferSize = (uint)(sizeof(float) * 4 * ArtLoader.MAX_LAND_DATA_INDEX_COUNT * 2);
+        texInfoBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo
         {
             size = texInfoBufferSize,
             usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
         });
         SDL_SetGPUBufferName(gpuDevice, texInfoBuffer, "Buffer TexInfo");
 
-        var terrainMeshSize = (uint)(Unsafe.SizeOf<Vertex>() * INPUT_LENGTH);
-        terrainMeshBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
+        var terrainMeshSize = (uint)(Unsafe.SizeOf<Vertex>() * inputLength);
+        terrainMeshBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo
         {
             size = terrainMeshSize,
-            usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_GRAPHICS_STORAGE_READ |
-                    SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
+            usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ |
                     SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
         });
         SDL_SetGPUBufferName(gpuDevice, terrainMeshBuffer, "Buffer TerrainMesh");
 
         var verticesSize = terrainMeshSize * 6; //each tile has 6 vertices
-        vertexBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
+        vertexBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo
         {
             size = verticesSize,
             usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_VERTEX |
@@ -207,168 +207,6 @@ public class UORenderer : IDisposable
         });
         SDL_SetGPUBufferName(gpuDevice, vertexBuffer, "Buffer Vertex");
         
-        //Copy
-        var transferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, new SDL_GPUTransferBufferCreateInfo
-            {
-                size = Math.Max(computeInputSize, texInfoBufferSize),
-                usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
-            }
-        );
-
-        Console.WriteLine("Preparing terrain mesh input");
-        IntPtr transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
-        unsafe
-        {
-            fixed (TerrainTile* inputPtr = &terrain._tiles[0])
-            {
-                Buffer.MemoryCopy(inputPtr, (void*)transferBufferPtr, computeInputSize, computeInputSize);
-            }
-        }
-        SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
-        
-        var copyCmdBuffer1 = SDL_AcquireGPUCommandBuffer(gpuDevice);
-        var copyPass = SDL_BeginGPUCopyPass(copyCmdBuffer1);
-
-        SDL_GPUTransferBufferLocation location = new()
-        {
-            transfer_buffer = transferBuffer,
-            offset = 0
-        };
-
-        SDL_GPUBufferRegion region = new()
-        {
-            buffer = computeInputBuffer,
-            size = computeInputSize,
-            offset = 0
-        };
-
-        SDL_UploadToGPUBuffer(copyPass, location, region, true);
-        SDL_EndGPUCopyPass(copyPass);
-        SDL_SubmitGPUCommandBuffer(copyCmdBuffer1);
-        
-        Console.WriteLine("Preparing tex info buffer");
-        transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
-        float atlasXY = (float)(TextureAtlas.PREDEFINED_SIZE);
-        unsafe
-        {
-            float* fTxBufPtr = (float*)transferBufferPtr;
-            foreach (var i in distinctIds)
-            {
-                var ti = i * 8;
-                var a = art.GetLand((uint)i);
-                if (a.Texture != IntPtr.Zero)
-                {
-                    fTxBufPtr[ti] = a.UV.x / atlasXY;
-                    fTxBufPtr[ti + 1] = a.UV.y / atlasXY;
-                    fTxBufPtr[ti + 2] = a.UV.w / atlasXY;
-                    fTxBufPtr[ti + 3] = a.UV.w / atlasXY;
-                }
-
-                var t = texmap.GetTexmap((uint)i);
-                if (t.Texture != IntPtr.Zero)
-                {
-                    fTxBufPtr[ti + 4] = 1 + t.UV.x / atlasXY;
-                    fTxBufPtr[ti + 5] = 1 + t.UV.y / atlasXY;
-                    fTxBufPtr[ti + 6] = t.UV.w / atlasXY;
-                    fTxBufPtr[ti + 7] = t.UV.h / atlasXY;
-                }
-            }
-        }
-        SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
-        
-        var copyCmdBuffer2 = SDL_AcquireGPUCommandBuffer(gpuDevice);
-        copyPass = SDL_BeginGPUCopyPass(copyCmdBuffer2);
-
-        location = new()
-        {
-            transfer_buffer = transferBuffer,
-            offset = 0
-        };
-
-        region = new()
-        {
-            buffer = texInfoBuffer,
-            size = texInfoBufferSize,
-            offset = 0
-        };
-
-        SDL_UploadToGPUBuffer(copyPass, location, region, true);
-        SDL_EndGPUCopyPass(copyPass);
-        SDL_SubmitGPUCommandBuffer(copyCmdBuffer2);
-        
-        SDL_ReleaseGPUTransferBuffer(gpuDevice, transferBuffer);
-        
-        Console.WriteLine("Computing terrain mesh");
-        //Stage 1
-        var computeCmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
-        float[] dims = [terrain._width * 8, terrain._height * 8, 0, 0];
-        unsafe
-        {
-            fixed (float* pDims = dims)
-            {
-                SDL_PushGPUComputeUniformData(computeCmdBuffer, 0, (IntPtr)pDims, (uint)(sizeof(float) * dims.Length));
-            }
-        }
-
-        var computePass1 = SDL_BeginGPUComputePass(
-            computeCmdBuffer,
-            [],
-            0,
-            [
-                new()
-                {
-                    buffer = terrainMeshBuffer,
-                }
-            ],
-            1);
-        
-        SDL_BindGPUComputePipeline(computePass1, terrainComputeStage1);
-        SDL_BindGPUComputeStorageBuffers(computePass1, 0, [computeInputBuffer], 1);
-        SDL_DispatchGPUCompute(computePass1, (uint)(terrain._width * terrain._height), 1, 1);
-        SDL_EndGPUComputePass(computePass1);
-        Console.WriteLine("Finised stage 1");
-        //Stage2
-        var computePass2 = SDL_BeginGPUComputePass(
-            computeCmdBuffer,
-            [],
-            0,
-            [
-                new()
-                {
-                    buffer = terrainMeshBuffer,
-                }
-            ],
-            1);
-        
-        SDL_BindGPUComputePipeline(computePass2, terrainComputeStage2);
-        SDL_BindGPUComputeStorageBuffers(computePass2, 0, [computeInputBuffer], 1);
-        SDL_DispatchGPUCompute(computePass2, (uint)(terrain._width * terrain._height), 1, 1);
-        SDL_EndGPUComputePass(computePass2);
-        Console.WriteLine("Finised stage 2");
-        //Stage3
-        var computePass3 = SDL_BeginGPUComputePass(
-            computeCmdBuffer,
-            [],
-            0,
-            [
-                new ()
-                {
-                    buffer = vertexBuffer,
-                },
-                // new ()
-                // {
-                //     buffer = indexBuffer,
-                // }
-            ],
-            1);
-        
-        SDL_BindGPUComputePipeline(computePass3, terrainComputeStage3);
-        SDL_BindGPUComputeStorageBuffers(computePass3, 0, [computeInputBuffer, terrainMeshBuffer, texInfoBuffer], 3);
-        SDL_DispatchGPUCompute(computePass3, (uint)(terrain._width * terrain._height), 1, 1);
-        SDL_EndGPUComputePass(computePass3);
-        
-        SDL_SubmitGPUCommandBuffer(computeCmdBuffer);
-        Console.WriteLine("Finised stage 3");
         Console.WriteLine("Preparing graphics pipeline");
         SDL_GPUVertexBufferDescription vertexDesc = new()
         {
@@ -442,36 +280,185 @@ public class UORenderer : IDisposable
         SDL_ReleaseGPUShader(gpuDevice, fragmentShader);
         SDL_ReleaseGPUShader(gpuDevice, vertexShader);
         
-        Console.WriteLine($"Vert count: {(uint)(terrain._tiles.Length * 6)}");
+        cmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
+        
+        //In real scenario this should come from outside and processed during Update()
+        UploadTilesToProcess(terrain.Tiles);
+        SetTexInfo(distinctIds);
     }
 
-    public bool NewFrame()
+    private void UploadTilesToProcess(TerrainTile[] terrainTiles)
     {
-        //Should this be here?
-        cmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
-        SDL_WaitAndAcquireGPUSwapchainTexture(cmdBuffer, windowHandle, out swapchainTexture, out swapchainWidth,
-            out swapchainHeight);
-        if (swapchainTexture == IntPtr.Zero)
+        Console.WriteLine("Preparing terrain mesh input");
+        uint computeInputSize = (uint)(Unsafe.SizeOf<TerrainTile>() * terrainTiles.Length);
+        var transferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, new SDL_GPUTransferBufferCreateInfo
+            {
+                size = computeInputSize,
+                usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
+            }
+        );
+        
+        IntPtr transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
+        unsafe
         {
-            SDL_SubmitGPUCommandBuffer(cmdBuffer);
-            return false; //Window minimized, don't draw
+            fixed (TerrainTile* inputPtr = &terrainTiles[0])
+            {
+                Buffer.MemoryCopy(inputPtr, (void*)transferBufferPtr, computeInputSize, computeInputSize);
+            }
         }
+        SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
+        
+        var copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
 
-        camera.ScreenSize = new SDL_Rect()
+        SDL_GPUTransferBufferLocation location = new()
         {
-            x = 0,
-            y = 0,
-            w = (int)swapchainWidth,
-            h = (int)swapchainHeight
+            transfer_buffer = transferBuffer,
+            offset = 0
         };
 
-        return true;
+        SDL_GPUBufferRegion region = new()
+        {
+            buffer = computeInputBuffer,
+            size = computeInputSize,
+            offset = 0
+        };
+
+        SDL_UploadToGPUBuffer(copyPass, location, region, true);
+        SDL_EndGPUCopyPass(copyPass);
+        SDL_ReleaseGPUTransferBuffer(gpuDevice, transferBuffer);
+        
+        chunksToCompute = (uint)(terrainTiles.Length / 64);
     }
 
+    private void SetTexInfo(int[] tileIds)
+    {
+        Console.WriteLine("Uploading TexInfo");
+        //Maybe we can somehow update if changed instead of overwriting?
+        var transferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, new SDL_GPUTransferBufferCreateInfo
+            {
+                size = texInfoBufferSize,
+                usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
+            }
+        );
+        var transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
+        float atlasXY = TextureAtlas.PREDEFINED_SIZE;
+        unsafe
+        {
+            float* fTxBufPtr = (float*)transferBufferPtr;
+            foreach (var i in tileIds)
+            {
+                var ti = i * 8;
+                var a = art.GetLand((uint)i);
+                if (a.Texture != IntPtr.Zero)
+                {
+                    fTxBufPtr[ti] = a.UV.x / atlasXY;
+                    fTxBufPtr[ti + 1] = a.UV.y / atlasXY;
+                    fTxBufPtr[ti + 2] = a.UV.w / atlasXY;
+                    fTxBufPtr[ti + 3] = a.UV.w / atlasXY;
+                }
+
+                var t = texmap.GetTexmap((uint)i);
+                if (t.Texture != IntPtr.Zero)
+                {
+                    fTxBufPtr[ti + 4] = 1 + t.UV.x / atlasXY;
+                    fTxBufPtr[ti + 5] = 1 + t.UV.y / atlasXY;
+                    fTxBufPtr[ti + 6] = t.UV.w / atlasXY;
+                    fTxBufPtr[ti + 7] = t.UV.h / atlasXY;
+                }
+            }
+        }
+        SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
+        
+        var copyPass = SDL_BeginGPUCopyPass(cmdBuffer);
+
+        var location = new SDL_GPUTransferBufferLocation()
+        {
+            transfer_buffer = transferBuffer,
+            offset = 0
+        };
+
+        var region = new SDL_GPUBufferRegion()
+        {
+            buffer = texInfoBuffer,
+            size = texInfoBufferSize,
+            offset = 0
+        };
+
+        SDL_UploadToGPUBuffer(copyPass, location, region, true);
+        SDL_EndGPUCopyPass(copyPass);
+        SDL_ReleaseGPUTransferBuffer(gpuDevice, transferBuffer);
+    }
+
+    private void ComputeTiles()
+    {
+        //Can this be uint[]?
+        float[] dims = [terrain.Width * 8, terrain.Height * 8, 0, 0];
+        unsafe
+        {
+            fixed (float* pDims = dims)
+            {
+                SDL_PushGPUComputeUniformData(cmdBuffer, 0, (IntPtr)pDims, (uint)(sizeof(float) * dims.Length));
+            }
+        }
+
+        var computePass1 = SDL_BeginGPUComputePass(
+            cmdBuffer,
+            [],
+            0,
+            [
+                new()
+                {
+                    buffer = terrainMeshBuffer,
+                }
+            ],
+            1);
+        
+        SDL_BindGPUComputePipeline(computePass1, terrainComputeStage1);
+        SDL_BindGPUComputeStorageBuffers(computePass1, 0, [computeInputBuffer], 1);
+        SDL_DispatchGPUCompute(computePass1, chunksToCompute, 1, 1);
+        SDL_EndGPUComputePass(computePass1);
+        
+        //Stage2
+        var computePass2 = SDL_BeginGPUComputePass(
+            cmdBuffer,
+            [],
+            0,
+            [
+                new()
+                {
+                    buffer = terrainMeshBuffer,
+                }
+            ],
+            1);
+        
+        SDL_BindGPUComputePipeline(computePass2, terrainComputeStage2);
+        SDL_BindGPUComputeStorageBuffers(computePass2, 0, [computeInputBuffer], 1);
+        SDL_DispatchGPUCompute(computePass2, chunksToCompute, 1, 1);
+        SDL_EndGPUComputePass(computePass2);
+        
+        //Stage3
+        var computePass3 = SDL_BeginGPUComputePass(
+            cmdBuffer,
+            [],
+            0,
+            [
+                new ()
+                {
+                    buffer = vertexBuffer,
+                }
+            ],
+            1);
+        
+        SDL_BindGPUComputePipeline(computePass3, terrainComputeStage3);
+        SDL_BindGPUComputeStorageBuffers(computePass3, 0, [computeInputBuffer, terrainMeshBuffer, texInfoBuffer], 3);
+        SDL_DispatchGPUCompute(computePass3, chunksToCompute, 1, 1);
+        SDL_EndGPUComputePass(computePass3);
+    }
+    
     public void HandleKeyDown(long elapsedTime, SDL_Keycode key)
     {
-        var moveDelta = elapsedTime * 0.000001f;
-        var zoomDelta = elapsedTime * 0.0000000001f;
+        var zoomScale = 1.05f;
+        var moveDelta = elapsedTime * 0.0001f;
         switch(key)
         {
             case SDL_Keycode.SDLK_UP:
@@ -491,30 +478,47 @@ public class UORenderer : IDisposable
                 camera.Position.Y -= moveDelta;
                 break;
             case SDL_Keycode.SDLK_Q:
-                camera.Zoom += zoomDelta;
+                camera.Zoom *= zoomScale;
                 break;
             case SDL_Keycode.SDLK_Z:
-                camera.Zoom -= zoomDelta;
+                camera.Zoom /= zoomScale;
                 break;
-            
         }
     }
 
     public void Update()
     {
+        camera.ScreenSize = new SDL_Rect
+        {
+            x = 0,
+            y = 0,
+            w = (int)swapchainWidth,
+            h = (int)swapchainHeight
+        };
         camera.Update();
     }
 
     public bool BeginDraw()
     {
+        SDL_WaitAndAcquireGPUSwapchainTexture(cmdBuffer, windowHandle, out swapchainTexture, out swapchainWidth,
+            out swapchainHeight);
+        if (swapchainTexture == IntPtr.Zero)
+        {
+            // SDL_SubmitGPUCommandBuffer(cmdBuffer);
+            return false; //Window minimized, don't draw
+        }
+        return true;
+    }
+
+    private IntPtr BeginRenderPass()
+    {
         SDL_GPUColorTargetInfo info = new()
         {
-            clear_color = new SDL_FColor { r = 240 / 255f, g = 240 / 255f, b = 240 / 255f, a = 1f },
+            clear_color = new SDL_FColor { r = 0, g = 0, b = 0, a = 1f },
             load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_CLEAR,
             store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_STORE,
             texture = swapchainTexture
         };
-
         SDL_GPUDepthStencilTargetInfo dsInfo = new()
         {
             texture = depthStencilTexture,
@@ -526,12 +530,18 @@ public class UORenderer : IDisposable
             stencil_load_op = SDL_GPULoadOp.SDL_GPU_LOADOP_DONT_CARE,
             stencil_store_op = SDL_GPUStoreOp.SDL_GPU_STOREOP_DONT_CARE
         };
-        renderPass = SDL_BeginGPURenderPass(cmdBuffer, [info], 1, dsInfo);
-        return true;
+        return SDL_BeginGPURenderPass(cmdBuffer, [info], 1, dsInfo);
     }
 
-    public void Draw()
+    public unsafe void Draw()
     {
+        //Most likely this should be in Update(), but it's here so we can capture it within frame
+        if (chunksToCompute > 0)
+        {
+            ComputeTiles();
+            // chunksToCompute = 0;
+        }
+        var renderPass = BeginRenderPass();
         SDL_BindGPUGraphicsPipeline(renderPass, graphicsPipeline);
         
         SDL_GPUBufferBinding binding = new()
@@ -542,56 +552,47 @@ public class UORenderer : IDisposable
         SDL_BindGPUVertexBuffers(renderPass, 0, [binding], 1);
 
         var x = camera.WorldViewProj;
-        float[] mat4 =
-        {
+        float[] mat4 = [
             x.M11, x.M12, x.M13, x.M14,
             x.M21, x.M22, x.M23, x.M24,
             x.M31, x.M32, x.M33, x.M34,
-            x.M41, x.M42, x.M43, x.M44,
-            terrain._width * 8, terrain._height * 8, 0, 0
-        };
+            x.M41, x.M42, x.M43, x.M44
+        ];
 
-        unsafe
+        fixed (float* pMat4 = mat4)
         {
-            fixed (float* pMat4 = mat4)
-            {
-                SDL_PushGPUVertexUniformData(cmdBuffer, 0, (IntPtr)pMat4, (uint)(sizeof(float) * mat4.Length));
-            }
-        }
-        SDL_BindGPUVertexStorageBuffers(renderPass, 0, [computeInputBuffer, terrainMeshBuffer, texInfoBuffer], 3);
-
-        var artTex = art.GetLand(3).Texture;
-        if (artTex == IntPtr.Zero)
-        {
-            Console.WriteLine("Invalid art texture");
+            SDL_PushGPUVertexUniformData(cmdBuffer, 0, (IntPtr)pMat4, (uint)(sizeof(float) * mat4.Length));
         }
 
-        var texTex = texmap.GetTexmap(3).Texture;
-        if (texTex == IntPtr.Zero)
-        {
-            Console.WriteLine("Invalid texmap");
-        }
+        var artTextre = art.GetLand(3).Texture;
+        var texTexture = texmap.GetTexmap(3).Texture;
         SDL_BindGPUFragmentSamplers(renderPass, 0, [
-            new SDL_GPUTextureSamplerBinding(){sampler = artSampler, texture = artTex},
-            new SDL_GPUTextureSamplerBinding(){sampler = texSampler, texture = texTex}
+            new SDL_GPUTextureSamplerBinding{sampler = artSampler, texture = artTextre},
+            new SDL_GPUTextureSamplerBinding{sampler = texSampler, texture = texTexture}
         ], 2);
         
-        SDL_DrawGPUPrimitives(renderPass, (uint)(terrain._tiles.Length * 6), 1, 0, 0);
+        SDL_DrawGPUPrimitives(renderPass, (uint)(terrain.Tiles.Length * 6), 1, 0, 0);
+        SDL_EndGPURenderPass(renderPass);
     }        
 
     public void EndDraw()
     {
-        SDL_EndGPURenderPass(renderPass);
         SDL_SubmitGPUCommandBuffer(cmdBuffer);
+        cmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
     }
 
     public void Dispose()
     {
+        SDL_ReleaseGPUSampler(gpuDevice, artSampler);
+        SDL_ReleaseGPUSampler(gpuDevice, texSampler);
+        SDL_ReleaseGPUBuffer(gpuDevice, computeInputBuffer);
+        SDL_ReleaseGPUBuffer(gpuDevice, texInfoBuffer);
+        SDL_ReleaseGPUBuffer(gpuDevice, terrainMeshBuffer);
+        SDL_ReleaseGPUBuffer(gpuDevice, vertexBuffer);
         SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage1);
         SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage2);
         SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage3);
         SDL_ReleaseGPUGraphicsPipeline(gpuDevice, graphicsPipeline);
-        SDL_ReleaseGPUBuffer(gpuDevice, vertexBuffer);
     }
     
     IntPtr CreateComputePipelineFromShader(string shaderFilename, SDL_GPUComputePipelineCreateInfo createInfo) {
