@@ -35,7 +35,9 @@ public class App : IDisposable
         {
             var timestamp = Stopwatch.GetTimestamp();
             var elapsed = timestamp - prevTimestamp;
+            var frameTime = Stopwatch.GetElapsedTime(prevTimestamp, timestamp).TotalMilliseconds;
             prevTimestamp = timestamp;
+            SDL_SetWindowTitle(windowHandle, $"SDL3-Sandbox - FrameTime:{frameTime:F2}ms");
             if (PollEvents(elapsed))
                 runApplication = false;
 
