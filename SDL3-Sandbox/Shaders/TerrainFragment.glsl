@@ -24,7 +24,7 @@ float get_light(vec3 normal)
 void main()
 {
     vec4 color;
-    if(InTexCoord.x > 0) {
+    if(InTexCoord.x > 1) {
         color = texture(TexSampler, InTexCoord - 1);
     }
     else {

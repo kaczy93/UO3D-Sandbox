@@ -13,24 +13,12 @@ namespace ClassicUO.Renderer.Arts
 
         public Art(IntPtr device, ArtLoader artLoader)
         {
-            _atlas = new TextureAtlas(device, 16384, 16384);
+            _atlas = new TextureAtlas(device);
             _artLoader = artLoader;
             _spriteInfos = new SpriteInfo[_artLoader.File.Entries.Length];
             _realArtBounds = new SDL_Rect[_spriteInfos.Length];
         }
 
-        public void PreLoadLand(int limit = 0x4000)
-        {
-            Console.WriteLine("Preloading land art");
-            for (uint i = 0; i < limit; i++)
-            {
-                SpriteInfo info = GetLand(i);
-                if (info.Texture != IntPtr.Zero)
-                {
-                    // Console.WriteLine($"Loaded {i}");
-                }
-            }
-        }
         
         public ref readonly SpriteInfo GetLand(uint idx)
             => ref Get((uint)(idx & ~0x4000));

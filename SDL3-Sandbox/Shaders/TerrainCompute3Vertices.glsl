@@ -1,9 +1,5 @@
 #version 460
 
-//This two should be uniform of landscape dimensions
-const uint WIDTH = 8; 
-const uint HEIGHT = 8;
-
 layout (local_size_x = 64) in;
 
 //We could pass only x,y here
@@ -53,7 +49,14 @@ layout(std140, set = 1, binding = 0) buffer OutVertexBuffer {
     VertexVirt[] vertices;
 } outputVertex;
 
+layout(set = 2, binding = 0) uniform MapDimensions {
+    vec4 dims;
+} mapDimensions;
+
 void main() {
+    int WIDTH = int(mapDimensions.dims.x);
+    int HEIGHT = int(mapDimensions.dims.y);
+    
     TerrainTile inputTile = inputData.tilePos[gl_GlobalInvocationID.x];
     uint inputIndex   = inputTile.x * HEIGHT + inputTile.y;
     
@@ -64,23 +67,27 @@ void main() {
     VertexVirt left =  inputVertex.vertices[inputTile.x * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
     VertexVirt bottom = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
     
-    Rect texInfoRect;
     if( top.PositionXYZNormalX.z == right.PositionXYZNormalX.z && 
         top.PositionXYZNormalX.z == left.PositionXYZNormalX.z &&
         top.PositionXYZNormalX.z == bottom.PositionXYZNormalX.z)
     {
         //Flat tile
-        texInfoRect = texInfoBuffer.info[inputTile.id].art;
+        Rect texInfoRect = texInfoBuffer.info[inputTile.id].art;
+        top.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w * 0.5f, texInfoRect.y);
+        right.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y + texInfoRect.h * 0.5f);
+        left.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y + texInfoRect.h * 0.5f);
+        bottom.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w * 0.5f, texInfoRect.y + texInfoRect.h);
     }
     else
     {
-        texInfoRect = texInfoBuffer.info[inputTile.id].tex;
+        Rect texInfoRect = texInfoBuffer.info[inputTile.id].tex;
+        top.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y);
+        right.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y);
+        left.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y + texInfoRect.h);
+        bottom.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y + texInfoRect.h);
     }
     
-    top.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y);
-    right.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y);
-    left.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y + texInfoRect.h);
-    bottom.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y + texInfoRect.h);
+   
     
     outputVertex.vertices[outputVertexIndex] = top;
     outputVertex.vertices[outputVertexIndex + 1] = right;

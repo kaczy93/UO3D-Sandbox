@@ -10,7 +10,7 @@ namespace ClassicUO.Renderer.Texmaps
 
         public Texmap(IntPtr device, TexmapsLoader texmapsLoader)
         {
-            _atlas = new TextureAtlas(device, 16384, 16384);
+            _atlas = new TextureAtlas(device);
             _texmapsLoader = texmapsLoader;
             _spriteInfos = new SpriteInfo[texmapsLoader.File.Entries.Length];
         }

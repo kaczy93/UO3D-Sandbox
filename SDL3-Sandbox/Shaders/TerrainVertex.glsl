@@ -12,7 +12,7 @@ struct TerrainTile {
     int y;
     int z;
 };
-
+//For debugging
 layout (std140, set = 0, binding = 0) readonly buffer InputBuffer {
     TerrainTile[] tiles;
 } inputData;
@@ -22,7 +22,7 @@ struct Vertex {
     vec3 Normal;
     vec2 TexCoord;
 };
-
+//For debugging
 layout(set = 0, binding = 1) readonly buffer TerrainMesh {
     Vertex[] tiles;
 };
@@ -33,7 +33,7 @@ struct TextureInfo {
     float w;
     float h;
 };
-
+//For debugging
 layout(std140, set = 0, binding = 2) readonly buffer TextureInfoBuffer {
     TextureInfo[0x4000] art;
     TextureInfo[0x4000] tex;
@@ -41,6 +41,7 @@ layout(std140, set = 0, binding = 2) readonly buffer TextureInfoBuffer {
 
 layout(set = 1, binding = 0) uniform ModelViewProj {
     mat4 matrix;
+    vec4 mapDim; //For debugging
 } modelViewProj;
 
 void main(){

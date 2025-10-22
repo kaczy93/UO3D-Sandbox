@@ -1,9 +1,5 @@
 #version 460
 
-//This two should be uniform of landscape dimensions
-const uint WIDTH = 8; 
-const uint HEIGHT = 8;
-
 layout (local_size_x = 64) in;
 
 //We could pass only x,y here
@@ -33,6 +29,10 @@ layout(std140, set = 1, binding = 0) buffer VertexBuffer {
     VertexVirt[] vertices;
 } inOutVert;
 
+layout(set = 2, binding = 0) uniform MapDimensions {
+    vec4 dims;
+} mapDimensions;
+
 void magic(VertexVirt tile, VertexVirt tile1, VertexVirt tile2, inout vec3 normal){
     vec3 u = tile1.PositionXYZNormalX.xyz - tile.PositionXYZNormalX.xyz;
     vec3 v = tile2.PositionXYZNormalX.xyz - tile.PositionXYZNormalX.xyz;
@@ -40,6 +40,9 @@ void magic(VertexVirt tile, VertexVirt tile1, VertexVirt tile2, inout vec3 norma
 }
 
 void main() {
+    int WIDTH = int(mapDimensions.dims.x);
+    int HEIGHT = int(mapDimensions.dims.y);
+    
     TerrainTile inputTile = inputData.tilePos[gl_GlobalInvocationID.x];
     uint tileIndex   = inputTile.x * HEIGHT + inputTile.y;
 

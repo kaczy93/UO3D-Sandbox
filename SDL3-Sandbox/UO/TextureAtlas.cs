@@ -6,6 +6,8 @@ namespace ClassicUO.Renderer
 {
     public class TextureAtlas : IDisposable
     {
+        public const int PREDEFINED_SIZE = 4096;
+        
         private readonly uint _width, _height;
         private readonly SDL_PixelFormat _format = SDL_PixelFormat.SDL_PIXELFORMAT_RGBA8888;
         private readonly IntPtr gpuDevice;
@@ -13,16 +15,18 @@ namespace ClassicUO.Renderer
         private readonly List<IntPtr> _textureList;
         private Packer _packer;
 
-        public TextureAtlas(IntPtr device, uint width, uint height)
+        public TextureAtlas(IntPtr device)
         {
             gpuDevice = device;
-            _width = width;
-            _height = height;
+            // _width = width;
+            // _height = height;
+            _width = PREDEFINED_SIZE;
+            _height = PREDEFINED_SIZE;
 
             _textureList = new List<IntPtr>();
             transferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, new SDL_GPUTransferBufferCreateInfo()
             {
-                size = width * height * 4,
+                size = _width * _height * 4,
                 usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
             });
         }

@@ -1,9 +1,5 @@
 #version 460
 
-//This two should be uniform of landscape dimensions
-const uint WIDTH = 8; 
-const uint HEIGHT = 8;
-
 const float TILE_SIZE = 44.0f * inversesqrt(2.0f);
 const float TILE_Z_SCALE = 4.0f;
 
@@ -35,7 +31,14 @@ layout(std140, set = 1, binding = 0) buffer VertexBuffer {
     VertexVirt[] vertex;
 } outputData;
 
+layout(set = 2, binding = 0) uniform MapDimensions {
+    vec4 dims;
+} mapDimensions;
+
 void main() {
+    int WIDTH = int(mapDimensions.dims.x);
+    int HEIGHT = int(mapDimensions.dims.y);
+    
     uint inputIndex = gl_GlobalInvocationID.x;
     
     TerrainTile tile = inputData.tiles[inputIndex];
