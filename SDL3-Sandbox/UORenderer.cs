@@ -140,8 +140,8 @@ public class UORenderer : IDisposable
             new SDL_GPUTextureCreateInfo
             {
                 type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-                width = 800,
-                height = 600,
+                width = 1920,
+                height = 1070,
                 layer_count_or_depth = 1,
                 num_levels = 1,
                 sample_count = SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_1,
@@ -463,10 +463,10 @@ public class UORenderer : IDisposable
                 camera.Position.Y -= moveDelta;
                 break;
             case SDL_Keycode.SDLK_Q:
-                camera.Zoom -= zoomDelta;
+                camera.Zoom += zoomDelta;
                 break;
             case SDL_Keycode.SDLK_Z:
-                camera.Zoom += zoomDelta;
+                camera.Zoom -= zoomDelta;
                 break;
             
         }

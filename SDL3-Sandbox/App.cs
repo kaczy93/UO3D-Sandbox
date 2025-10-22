@@ -17,7 +17,7 @@ public class App : IDisposable
             throw new Exception("SDL_Init failed");
         }
 
-        windowHandle = SDL_CreateWindow("SDL3-Sandbox", 800, 600, SDL_WindowFlags.SDL_WINDOW_RESIZABLE);
+        windowHandle = SDL_CreateWindow("SDL3-Sandbox", 1920, 1070, SDL_WindowFlags.SDL_WINDOW_RESIZABLE);
         gpuDevice = SDL_CreateGPUDevice(SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV, true, null);
         if (gpuDevice == IntPtr.Zero)
             throw new Exception("SDL_CreateGPUDevice failed");
