@@ -22,6 +22,10 @@ public class UORenderer : IDisposable
     private UOFileManager manager;
     private Art art;
     private Texmap texmap;
+
+    private IntPtr terrainComputeStage1;
+    private IntPtr terrainComputeStage2;
+    private IntPtr terrainComputeStage3;
     
     private IntPtr cmdBuffer;
     private IntPtr swapchainTexture;
@@ -30,13 +34,13 @@ public class UORenderer : IDisposable
     private IntPtr depthStencilTexture;
 
     private IntPtr computeInputBuffer;
+    private IntPtr texInfoBuffer;
     private IntPtr terrainMeshBuffer;
     
-    private IntPtr myTexture;
-    private IntPtr sampler;
+    private IntPtr artSampler;
+    private IntPtr texSampler;
     
     private IntPtr vertexBuffer;
-    private IntPtr indexBuffer;
 
     private IntPtr graphicsPipeline;
     private IntPtr renderPass;
@@ -49,27 +53,84 @@ public class UORenderer : IDisposable
 
     public void Init()
     {
+        Console.WriteLine("Loading UO Assets");
+        int maxLandId = 10; //We only need that much for testing
         manager = new UOFileManager(ClientVersion.CV_706400, "/home/kaczy/nel/Ultima Online Classic_7_0_95_0_modified");
         manager.Load();
         art = new Art(gpuDevice, manager.Arts);
-        art.PreLoadLand();
+        art.PreLoadLand(maxLandId);
         texmap = new Texmap(gpuDevice, manager.Texmaps);
-        texmap.PreLoad();
+        texmap.PreLoad(maxLandId);
         
+        Console.WriteLine("Creating shaders, samplers, buffers");
+        //LoadShaders
         var vertexShader = LoadShader("Shaders/TerrainVertex.spv", new()
         {
             format = SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV,
             stage = SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_VERTEX,
             num_uniform_buffers = 1,
-            num_storage_buffers = 2
+            num_storage_buffers = 3
         });
         var fragmentShader = LoadShader("Shaders/TerrainFragment.spv", new()
         {
-            format=SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV,
+            format = SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV,
             stage = SDL_GPUShaderStage.SDL_GPU_SHADERSTAGE_FRAGMENT,
-            num_samplers = 1
+            num_samplers = 2
         });
         
+        //Sampler
+        artSampler = SDL_CreateGPUSampler(gpuDevice, new()
+        {
+            min_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
+            mag_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
+            mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            address_mode_u = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            address_mode_v = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        });
+        texSampler = SDL_CreateGPUSampler(gpuDevice, new()
+        {
+            min_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
+            mag_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
+            mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+            address_mode_u = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            address_mode_v = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+            address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        });
+        
+        //Create pipelines
+        terrainComputeStage1 = CreateComputePipelineFromShader(
+            "Shaders/TerrainCompute1Pos.spv",
+            new() {
+                num_readonly_storage_buffers = 1,
+                num_readwrite_storage_buffers = 1,
+                threadcount_x = 64,
+                threadcount_y = 1,
+                threadcount_z = 1,
+            }
+        );
+        terrainComputeStage2 = CreateComputePipelineFromShader(
+            "Shaders/TerrainCompute2Normals.spv",
+            new() {
+                num_readonly_storage_buffers = 1,
+                num_readwrite_storage_buffers = 1,
+                threadcount_x = 64,
+                threadcount_y = 1,
+                threadcount_z = 1,
+            }
+        );
+        var terrainComputeStage3 = CreateComputePipelineFromShader(
+            "Shaders/TerrainCompute3Vertices.spv",
+            new() {
+                num_readonly_storage_buffers = 3,
+                num_readwrite_storage_buffers = 1,
+                threadcount_x = 64,
+                threadcount_y = 1,
+                threadcount_z = 1,
+            }
+        );
+        
+        //Create depth stencil
         depthStencilTexture = SDL_CreateGPUTexture(
             gpuDevice,
             new SDL_GPUTextureCreateInfo
@@ -86,19 +147,25 @@ public class UORenderer : IDisposable
         );
         
         //Prepare buffers
-        
         const int INPUT_LENGTH = 64;
 
         var inputData = new TerrainTile[INPUT_LENGTH];
         for (int i = 0; i < INPUT_LENGTH; i++)
         {
-            inputData[i] = new TerrainTile(3, (i % 8), (i / 8), Random.Shared.Next(5));
+            inputData[i] = new TerrainTile(3 + Random.Shared.Next(4), i % 8, i / 8, Random.Shared.Next(5));
         }
 
         var computeInputSize = (uint)(Unsafe.SizeOf<TerrainTile>() * INPUT_LENGTH);
         computeInputBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
         {
             size = computeInputSize,
+            usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
+        });
+
+        var texInfoBufferSize = (uint)(sizeof(float) * 4 * 0x4000 * 2);
+        texInfoBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
+        {
+            size = texInfoBufferSize,
             usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_READ
         });
 
@@ -118,25 +185,17 @@ public class UORenderer : IDisposable
             usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_VERTEX |
                     SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
         });
-
-        var indexSize = (uint)(sizeof(uint) * 6 * INPUT_LENGTH);
-        indexBuffer = SDL_CreateGPUBuffer(gpuDevice, new SDL_GPUBufferCreateInfo()
-        {
-            size = indexSize,
-            usage = SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_INDEX |
-                    SDL_GPUBufferUsageFlags.SDL_GPU_BUFFERUSAGE_COMPUTE_STORAGE_WRITE
-        });
         
-        //Copy input for compute
+        //Copy
         var transferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, new SDL_GPUTransferBufferCreateInfo
             {
-                size = computeInputSize,
+                size = Math.Max(computeInputSize, texInfoBufferSize),
                 usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
             }
         );
 
+        Console.WriteLine("Preparing terrain mesh input");
         IntPtr transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
-
         unsafe
         {
             fixed (TerrainTile* inputPtr = &inputData[0])
@@ -144,11 +203,10 @@ public class UORenderer : IDisposable
                 Buffer.MemoryCopy(inputPtr, (void*)transferBufferPtr, computeInputSize, computeInputSize);
             }
         }
-
         SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
         
-        var copyCmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
-        var copyPass = SDL_BeginGPUCopyPass(copyCmdBuffer);
+        var copyCmdBuffer1 = SDL_AcquireGPUCommandBuffer(gpuDevice);
+        var copyPass = SDL_BeginGPUCopyPass(copyCmdBuffer1);
 
         SDL_GPUTransferBufferLocation location = new()
         {
@@ -164,97 +222,66 @@ public class UORenderer : IDisposable
         };
 
         SDL_UploadToGPUBuffer(copyPass, location, region, true);
-
         SDL_EndGPUCopyPass(copyPass);
-        SDL_SubmitGPUCommandBuffer(copyCmdBuffer);
+        SDL_SubmitGPUCommandBuffer(copyCmdBuffer1);
+        
+        Console.WriteLine("Preparing tex info buffer");
+        transferBufferPtr = SDL_MapGPUTransferBuffer(gpuDevice, transferBuffer, false);
+        float atlasXY = 16384f;
+        unsafe
+        {
+            float* fTxBufPtr = (float*)transferBufferPtr;
+            for (uint  i = 0; i < maxLandId; i++)
+            {
+                var ti = i * 8;
+                var a = art.GetArt(i);
+                if (a.Texture != IntPtr.Zero)
+                {
+                    fTxBufPtr[ti] = a.UV.x / atlasXY;
+                    fTxBufPtr[ti + 1] = a.UV.y / atlasXY;
+                    fTxBufPtr[ti + 2] = a.UV.w / atlasXY;
+                    fTxBufPtr[ti + 3] = a.UV.w / atlasXY;
+                }
+
+                var t = texmap.GetTexmap(i);
+                if (t.Texture != IntPtr.Zero)
+                {
+                    fTxBufPtr[ti + 4] = 1 + t.UV.x / atlasXY;
+                    fTxBufPtr[ti + 5] = 1 + t.UV.y / atlasXY;
+                    fTxBufPtr[ti + 6] = t.UV.w / atlasXY;
+                    fTxBufPtr[ti + 7] = t.UV.h / atlasXY;
+                }
+            }
+        }
+        SDL_UnmapGPUTransferBuffer(gpuDevice, transferBuffer);
+        
+        var copyCmdBuffer2 = SDL_AcquireGPUCommandBuffer(gpuDevice);
+        copyPass = SDL_BeginGPUCopyPass(copyCmdBuffer2);
+
+        location = new()
+        {
+            transfer_buffer = transferBuffer,
+            offset = 0
+        };
+
+        region = new()
+        {
+            buffer = texInfoBuffer,
+            size = texInfoBufferSize,
+            offset = 0
+        };
+
+        SDL_UploadToGPUBuffer(copyPass, location, region, true);
+        SDL_EndGPUCopyPass(copyPass);
+        SDL_SubmitGPUCommandBuffer(copyCmdBuffer2);
         
         SDL_ReleaseGPUTransferBuffer(gpuDevice, transferBuffer);
         
-        //Upload texture
-        sampler = SDL_CreateGPUSampler(gpuDevice, new()
-        {
-            min_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
-            mag_filter = SDL_GPUFilter.SDL_GPU_FILTER_NEAREST,
-            mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
-            address_mode_u = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            address_mode_v = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-            address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-        });
-        
-        unsafe
-        {
-            var imageData = SDL_LoadBMP("Texture.bmp");
-            var convertedImage = SDL_ConvertSurface((IntPtr)imageData, SDL_PixelFormat.SDL_PIXELFORMAT_ABGR8888);
-            uint imageBytes = (uint)(imageData->w * imageData->h * 4);
-            myTexture = SDL_CreateGPUTexture(gpuDevice, new SDL_GPUTextureCreateInfo()
-            {
-                type = SDL_GPUTextureType.SDL_GPU_TEXTURETYPE_2D,
-                format = SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-                width = (uint)imageData->w,
-                height = (uint)imageData->h,
-                layer_count_or_depth = 1,
-                num_levels = 1,
-                usage = SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_SAMPLER
-            });
-
-            var texTransferBuffer = SDL_CreateGPUTransferBuffer(gpuDevice, 
-                new SDL_GPUTransferBufferCreateInfo
-                {
-                size = imageBytes,
-                usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
-                }
-            );
-
-            var texData = SDL_MapGPUTransferBuffer(gpuDevice, texTransferBuffer, false);
-            
-            Buffer.MemoryCopy((void*)convertedImage->pixels, (void*)texData, imageBytes, imageBytes);
-            
-            SDL_UnmapGPUTransferBuffer(gpuDevice, texTransferBuffer);
-
-            var texCmdBuf = SDL_AcquireGPUCommandBuffer(gpuDevice);
-            var texCopyPass = SDL_BeginGPUCopyPass(texCmdBuf);
-            
-            SDL_UploadToGPUTexture(texCopyPass, 
-                new SDL_GPUTextureTransferInfo
-                {
-                    transfer_buffer = texTransferBuffer,
-                    offset = 0
-                },
-                new SDL_GPUTextureRegion
-                {
-                    texture = myTexture,
-                    w = (uint)imageData->w,
-                    h = (uint)imageData->h,
-                    d = 1
-                },
-                false);
-            
-            SDL_EndGPUCopyPass(texCopyPass);
-            SDL_SubmitGPUCommandBuffer(texCmdBuf);
-            
-            SDL_ReleaseGPUTransferBuffer(gpuDevice, texTransferBuffer);
-            SDL_DestroySurface((IntPtr)convertedImage);
-            SDL_DestroySurface((IntPtr)imageData);
-        }
-        
-        //Compute terrain
-        
+        Console.WriteLine("Computing terrain mesh");
         //Stage 1
-        Console.WriteLine("Compute stage 1");
-        var terrainComputeStage1 = CreateComputePipelineFromShader(
-            "Shaders/TerrainCompute1Pos.spv",
-            new() {
-                num_readonly_storage_buffers = 1,
-                num_readwrite_storage_buffers = 1,
-                threadcount_x = 64,
-                threadcount_y = 1,
-                threadcount_z = 1,
-            }
-        );
-        
-        var localCmdBuffer1 = SDL_AcquireGPUCommandBuffer(gpuDevice);
+        var computeCmdBuffer = SDL_AcquireGPUCommandBuffer(gpuDevice);
         var computePass1 = SDL_BeginGPUComputePass(
-            localCmdBuffer1,
+            computeCmdBuffer,
             [],
             0,
             [
@@ -268,27 +295,11 @@ public class UORenderer : IDisposable
         SDL_BindGPUComputePipeline(computePass1, terrainComputeStage1);
         SDL_BindGPUComputeStorageBuffers(computePass1, 0, [computeInputBuffer], 1);
         SDL_DispatchGPUCompute(computePass1, 1, 1, 1);
-        
         SDL_EndGPUComputePass(computePass1);
-        SDL_SubmitGPUCommandBuffer(localCmdBuffer1);
-        SDL_ReleaseGPUComputePipeline(gpuDevice, computePass1);
         
         //Stage2
-        Console.WriteLine("Compute stage 2");
-        var terrainComputeStage2 = CreateComputePipelineFromShader(
-            "Shaders/TerrainCompute2Normals.spv",
-            new() {
-                num_readonly_storage_buffers = 1,
-                num_readwrite_storage_buffers = 1,
-                threadcount_x = 64,
-                threadcount_y = 1,
-                threadcount_z = 1,
-            }
-        );
-        
-        var localCmdBuffer2 = SDL_AcquireGPUCommandBuffer(gpuDevice);
         var computePass2 = SDL_BeginGPUComputePass(
-            localCmdBuffer2,
+            computeCmdBuffer,
             [],
             0,
             [
@@ -302,27 +313,11 @@ public class UORenderer : IDisposable
         SDL_BindGPUComputePipeline(computePass2, terrainComputeStage2);
         SDL_BindGPUComputeStorageBuffers(computePass2, 0, [computeInputBuffer], 1);
         SDL_DispatchGPUCompute(computePass2, 1, 1, 1);
-        
         SDL_EndGPUComputePass(computePass2);
-        SDL_SubmitGPUCommandBuffer(localCmdBuffer2);
-        SDL_ReleaseGPUComputePipeline(gpuDevice, computePass2);
         
         //Stage3
-        Console.WriteLine("Compute stage 3");
-        var terrainComputeStage3 = CreateComputePipelineFromShader(
-            "Shaders/TerrainCompute3Vertices.spv",
-            new() {
-                num_readonly_storage_buffers = 2,
-                num_readwrite_storage_buffers = 1,
-                threadcount_x = 64,
-                threadcount_y = 1,
-                threadcount_z = 1,
-            }
-        );
-        
-        var localCmdBuffer3 = SDL_AcquireGPUCommandBuffer(gpuDevice);
         var computePass3 = SDL_BeginGPUComputePass(
-            localCmdBuffer3,
+            computeCmdBuffer,
             [],
             0,
             [
@@ -338,15 +333,13 @@ public class UORenderer : IDisposable
             1);
         
         SDL_BindGPUComputePipeline(computePass3, terrainComputeStage3);
-        SDL_BindGPUComputeStorageBuffers(computePass3, 0, [computeInputBuffer, terrainMeshBuffer], 2);
+        SDL_BindGPUComputeStorageBuffers(computePass3, 0, [computeInputBuffer, terrainMeshBuffer, texInfoBuffer], 3);
         SDL_DispatchGPUCompute(computePass3, 1, 1, 1);
-        
         SDL_EndGPUComputePass(computePass3);
-        SDL_SubmitGPUCommandBuffer(localCmdBuffer3);
-        SDL_ReleaseGPUComputePipeline(gpuDevice, computePass3);
         
-        //Graphics pipeline
+        SDL_SubmitGPUCommandBuffer(computeCmdBuffer);
         
+        Console.WriteLine("Preparing graphics pipeline");
         SDL_GPUVertexBufferDescription vertexDesc = new()
         {
             slot = 0,
@@ -474,17 +467,13 @@ public class UORenderer : IDisposable
             offset = 0
         };
         SDL_BindGPUVertexBuffers(renderPass, 0, [binding], 1);
-        // SDL_BindGPUIndexBuffer(renderPass, new SDL_GPUBufferBinding()
-        // {
-        //     buffer = indexBuffer,
-        //     offset = 0
-        // }, SDL_GPUIndexElementSize.SDL_GPU_INDEXELEMENTSIZE_32BIT);
-        
+
+        var scale = 0.004f;
         float[] mat4 =
         {
-            0.01f, 0, 0, 0,
-            0, 0.01f, 0, 0,
-            0, 0, 0.1f, 0,
+            scale, 0, 0, 0,
+            0, scale, 0, 0,
+            0, 0, scale, 0,
             0, 0, 0, 1f
         };
 
@@ -495,14 +484,28 @@ public class UORenderer : IDisposable
                 SDL_PushGPUVertexUniformData(cmdBuffer, 0, (IntPtr)pMat4, sizeof(float) * 16);
             }
         }
-        SDL_BindGPUVertexStorageBuffers(renderPass, 0, [computeInputBuffer, terrainMeshBuffer], 2);
-        
-        SDL_BindGPUFragmentSamplers(renderPass, 0, [new SDL_GPUTextureSamplerBinding(){sampler = sampler, texture = myTexture}], 1);
+        SDL_BindGPUVertexStorageBuffers(renderPass, 0, [computeInputBuffer, terrainMeshBuffer, texInfoBuffer], 3);
+
+        var artTex = art.GetArt(3).Texture;
+        if (artTex == IntPtr.Zero)
+        {
+            Console.WriteLine("Invalid art texture");
+        }
+
+        var texTex = texmap.GetTexmap(3).Texture;
+        if (texTex == IntPtr.Zero)
+        {
+            Console.WriteLine("Invalid texmap");
+        }
+        SDL_BindGPUFragmentSamplers(renderPass, 0, [
+            new SDL_GPUTextureSamplerBinding(){sampler = artSampler, texture = artTex},
+            new SDL_GPUTextureSamplerBinding(){sampler = texSampler, texture = texTex}
+        ], 2);
         
         SDL_DrawGPUPrimitives(renderPass, 64 * 6, 64 * 2, 0, 0);
         
         // SDL_DrawGPUPrimitives(renderPass, 3, 1, 0, 0);
-    }
+    }        
 
     public void EndDraw()
     {
@@ -512,6 +515,9 @@ public class UORenderer : IDisposable
 
     public void Dispose()
     {
+        SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage1);
+        SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage2);
+        SDL_ReleaseGPUComputePipeline(gpuDevice, terrainComputeStage3);
         SDL_ReleaseGPUGraphicsPipeline(gpuDevice, graphicsPipeline);
         SDL_ReleaseGPUBuffer(gpuDevice, vertexBuffer);
     }

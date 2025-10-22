@@ -49,7 +49,7 @@ void main() {
 //    vertex.TexCoord = vec2(float(tile.id), 0.0f); //Let's keep id for now
     VertexVirt vertex = outputData.vertex[outputIndex];
     vertex.PositionXYZNormalX = vec4(float(tile.x) * TILE_SIZE, float(tile.y) * TILE_SIZE, float(tile.z) * TILE_Z_SCALE, 0.0f);
-    vertex.NormalYZTexUV = vec4(0.0f, 0.0f, float(tile.id), 0.0f);
+    vertex.NormalYZTexUV = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     
     outputData.vertex[outputIndex] = vertex; //Do we need this assignment?
 }

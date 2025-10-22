@@ -33,6 +33,22 @@ layout(std140, set = 0, binding = 1) readonly buffer InVertexBuffer {
     VertexVirt[] vertices;
 } inputVertex;
 
+struct Rect { 
+    float x;
+    float y;
+    float w;
+    float h;
+};
+
+struct TexInfo {
+    Rect art;
+    Rect tex;
+};
+
+layout(std140, set = 0, binding = 2) readonly buffer TextureInfoBuffer {
+    TexInfo[0x4000] info;
+} texInfoBuffer;
+
 layout(std140, set = 1, binding = 0) buffer OutVertexBuffer {
     VertexVirt[] vertices;
 } outputVertex;
@@ -42,27 +58,35 @@ void main() {
     uint inputIndex   = inputTile.x * HEIGHT + inputTile.y;
     
     uint outputVertexIndex = inputIndex * 6;
-    
-    outputVertex.vertices[outputVertexIndex] = inputVertex.vertices[inputIndex];
-    outputVertex.vertices[outputVertexIndex].NormalYZTexUV.zw = vec2(0,0);
 
-    outputVertex.vertices[outputVertexIndex + 1] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + inputTile.y];
-    outputVertex.vertices[outputVertexIndex + 1].NormalYZTexUV.zw = vec2(1,0);
+    VertexVirt top = inputVertex.vertices[inputIndex];
+    VertexVirt right = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + inputTile.y];
+    VertexVirt left =  inputVertex.vertices[inputTile.x * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
+    VertexVirt bottom = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
     
-    outputVertex.vertices[outputVertexIndex + 2] = inputVertex.vertices[inputTile.x * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
-    outputVertex.vertices[outputVertexIndex + 2].NormalYZTexUV.zw = vec2(0,1);
+    Rect texInfoRect;
+    if( top.PositionXYZNormalX.z == right.PositionXYZNormalX.z && 
+        top.PositionXYZNormalX.z == left.PositionXYZNormalX.z &&
+        top.PositionXYZNormalX.z == bottom.PositionXYZNormalX.z)
+    {
+        //Flat tile
+        texInfoRect = texInfoBuffer.info[inputTile.id].art;
+    }
+    else
+    {
+        texInfoRect = texInfoBuffer.info[inputTile.id].tex;
+    }
     
-    outputVertex.vertices[outputVertexIndex + 3] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
-    outputVertex.vertices[outputVertexIndex + 3].NormalYZTexUV.zw = vec2(1,1);
-
-    outputVertex.vertices[outputVertexIndex + 4] = outputVertex.vertices[outputVertexIndex + 2];
-    outputVertex.vertices[outputVertexIndex + 5] = outputVertex.vertices[outputVertexIndex + 1];
+    top.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y);
+    right.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y);
+    left.NormalYZTexUV.zw = vec2(texInfoRect.x, texInfoRect.y + texInfoRect.h);
+    bottom.NormalYZTexUV.zw = vec2(texInfoRect.x + texInfoRect.w, texInfoRect.y + texInfoRect.h);
     
-    
-//    outputVertex.vertices[outputVertexIndex + 4] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + min(inputTile.y + 1, HEIGHT - 1)];
-//    outputVertex.vertices[outputVertexIndex + 4].NormalYZTexUV.zw = vec2(1,1);
-//    
-//    outputVertex.vertices[outputVertexIndex + 5] = inputVertex.vertices[min(inputTile.x + 1, WIDTH - 1) * HEIGHT + inputTile.y];
-//    outputVertex.vertices[outputVertexIndex + 5].NormalYZTexUV.zw = vec2(1,0);
+    outputVertex.vertices[outputVertexIndex] = top;
+    outputVertex.vertices[outputVertexIndex + 1] = right;
+    outputVertex.vertices[outputVertexIndex + 2] = left;
+    outputVertex.vertices[outputVertexIndex + 3] = bottom;
+    outputVertex.vertices[outputVertexIndex + 4] = left;
+    outputVertex.vertices[outputVertexIndex + 5] = right;
 }
 

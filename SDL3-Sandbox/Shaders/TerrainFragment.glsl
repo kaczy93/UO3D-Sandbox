@@ -8,7 +8,8 @@ layout (location = 0) out vec4 FragColor;
 layout (location = 0) in vec3 InNormal;
 layout (location = 1) in vec2 InTexCoord;
 
-layout (set = 2, binding = 0) uniform sampler2D OurTexture;
+layout (set = 2, binding = 0) uniform sampler2D ArtSampler;
+layout (set = 2, binding = 1) uniform sampler2D TexSampler;
 
 float get_light(vec3 normal)
 {
@@ -22,7 +23,14 @@ float get_light(vec3 normal)
 
 void main()
 {
-    vec4 color = texture(OurTexture, InTexCoord);
+    vec4 color;
+    if(InTexCoord.x > 0) {
+        color = texture(TexSampler, InTexCoord - 1);
+    }
+    else {
+        color = texture(ArtSampler, InTexCoord);
+    }
+    
     if(color.a == 0)
             discard;
     

@@ -10,14 +10,15 @@ namespace ClassicUO.Renderer.Texmaps
 
         public Texmap(IntPtr device, TexmapsLoader texmapsLoader)
         {
-            _atlas = new TextureAtlas(device, 4096 * 4, 4096 * 4);
+            _atlas = new TextureAtlas(device, 16384, 16384);
             _texmapsLoader = texmapsLoader;
             _spriteInfos = new SpriteInfo[texmapsLoader.File.Entries.Length];
         }
 
-        public void PreLoad()
+        public void PreLoad(int limit = 0x4000)
         {
-            for (uint i = 0; i < 0x4000; i++)
+            Console.WriteLine("Preloading lann texmaps");
+            for (uint i = 0; i < limit; i++)
             {
                 SpriteInfo info = GetTexmap(i);
                 if (info.Texture != IntPtr.Zero)

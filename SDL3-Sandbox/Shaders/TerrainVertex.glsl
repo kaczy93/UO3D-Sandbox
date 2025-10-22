@@ -27,6 +27,18 @@ layout(set = 0, binding = 1) readonly buffer TerrainMesh {
     Vertex[] tiles;
 };
 
+struct TextureInfo {
+    float x;
+    float y;
+    float w;
+    float h;
+};
+
+layout(std140, set = 0, binding = 2) readonly buffer TextureInfoBuffer {
+    TextureInfo[0x4000] art;
+    TextureInfo[0x4000] tex;
+} texInfoBuffer;
+
 layout(set = 1, binding = 0) uniform ModelViewProj {
     mat4 matrix;
 } modelViewProj;
