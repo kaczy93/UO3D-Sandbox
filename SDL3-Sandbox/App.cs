@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using static SDL3.SDL;
 
 namespace SDL3_Sandbox;
@@ -25,15 +26,20 @@ public class App : IDisposable
         renderer = new UORenderer(windowHandle, gpuDevice);
         renderer.Init();
     }
+
+    private long prevTimestamp;
     
     public void Run()
     {
         while (runApplication)
         {
-            if (PollEvents())
+            var timestamp = Stopwatch.GetTimestamp();
+            var elapsed = timestamp - prevTimestamp;
+            prevTimestamp = timestamp;
+            if (PollEvents(elapsed))
                 runApplication = false;
 
-            Update();
+            Update(elapsed);
             if (BeginDraw())
             {
                 Draw();
@@ -42,7 +48,7 @@ public class App : IDisposable
         }
     }
 
-    private bool PollEvents()
+    private bool PollEvents(long elapsedTime)
     {
         SDL_Event evt;
 
@@ -52,15 +58,19 @@ public class App : IDisposable
             {
                 case SDL_EventType.SDL_EVENT_QUIT:
                     return true;
+                case SDL_EventType.SDL_EVENT_KEY_DOWN:
+                    renderer.HandleKeyDown(elapsedTime, (SDL_Keycode)evt.key.key);
+                    break;
                 default:
                     break;
             }
+            
         }
 
         return false;
     }
 
-    private void Update()
+    private void Update(long elapsedTime)
     {
         renderer.Update();
     }

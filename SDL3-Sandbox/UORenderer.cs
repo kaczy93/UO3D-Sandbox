@@ -440,6 +440,38 @@ public class UORenderer : IDisposable
         return true;
     }
 
+    public void HandleKeyDown(long elapsedTime, SDL_Keycode key)
+    {
+        var moveDelta = elapsedTime * 0.000001f;
+        var zoomDelta = elapsedTime * 0.000000001f;
+        switch(key)
+        {
+            case SDL_Keycode.SDLK_UP:
+                camera.Position.X -= moveDelta;
+                camera.Position.Y -= moveDelta;
+                break;
+            case SDL_Keycode.SDLK_DOWN:
+                camera.Position.X += moveDelta;
+                camera.Position.Y += moveDelta;
+                break;
+            case SDL_Keycode.SDLK_LEFT:
+                camera.Position.X -= moveDelta;
+                camera.Position.Y += moveDelta;
+                break;
+            case SDL_Keycode.SDLK_RIGHT:
+                camera.Position.X += moveDelta;
+                camera.Position.Y -= moveDelta;
+                break;
+            case SDL_Keycode.SDLK_Q:
+                camera.Zoom -= zoomDelta;
+                break;
+            case SDL_Keycode.SDLK_Z:
+                camera.Zoom += zoomDelta;
+                break;
+            
+        }
+    }
+
     public void Update()
     {
         camera.Update();
