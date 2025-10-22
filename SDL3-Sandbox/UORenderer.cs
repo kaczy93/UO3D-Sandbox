@@ -169,6 +169,7 @@ public class UORenderer : IDisposable
         unsafe
         {
             var imageData = SDL_LoadBMP("Texture.bmp");
+            var convertedImage = SDL_ConvertSurface((IntPtr)imageData, SDL_PixelFormat.SDL_PIXELFORMAT_ABGR8888);
             uint imageBytes = (uint)(imageData->w * imageData->h * 4);
             myTexture = SDL_CreateGPUTexture(gpuDevice, new SDL_GPUTextureCreateInfo()
             {
@@ -191,7 +192,7 @@ public class UORenderer : IDisposable
 
             var texData = SDL_MapGPUTransferBuffer(gpuDevice, texTransferBuffer, false);
             
-            Buffer.MemoryCopy(imageData, (void*)texData, imageBytes, imageBytes);
+            Buffer.MemoryCopy((void*)convertedImage->pixels, (void*)texData, imageBytes, imageBytes);
             
             SDL_UnmapGPUTransferBuffer(gpuDevice, texTransferBuffer);
 
@@ -217,6 +218,7 @@ public class UORenderer : IDisposable
             SDL_SubmitGPUCommandBuffer(texCmdBuf);
             
             SDL_ReleaseGPUTransferBuffer(gpuDevice, texTransferBuffer);
+            SDL_DestroySurface((IntPtr)convertedImage);
             SDL_DestroySurface((IntPtr)imageData);
         }
         
