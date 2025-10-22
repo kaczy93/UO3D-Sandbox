@@ -1,5 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using ClassicUO.Assets;
+using ClassicUO.Renderer.Arts;
+using ClassicUO.Renderer.Texmaps;
+using SDL3_Sandbox.UO;
 using static SDL3.SDL;
 
 namespace SDL3_Sandbox;
@@ -14,6 +18,10 @@ public class UORenderer : IDisposable
 
     private IntPtr windowHandle;
     private IntPtr gpuDevice;
+
+    private UOFileManager manager;
+    private Art art;
+    private Texmap texmap;
     
     private IntPtr cmdBuffer;
     private IntPtr swapchainTexture;
@@ -41,6 +49,13 @@ public class UORenderer : IDisposable
 
     public void Init()
     {
+        manager = new UOFileManager(ClientVersion.CV_706400, "/home/kaczy/nel/Ultima Online Classic_7_0_95_0_modified");
+        manager.Load();
+        art = new Art(gpuDevice, manager.Arts);
+        art.PreLoadLand();
+        texmap = new Texmap(gpuDevice, manager.Texmaps);
+        texmap.PreLoad();
+        
         var vertexShader = LoadShader("Shaders/TerrainVertex.spv", new()
         {
             format = SDL_GPUShaderFormat.SDL_GPU_SHADERFORMAT_SPIRV,

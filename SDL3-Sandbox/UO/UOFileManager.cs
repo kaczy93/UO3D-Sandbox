@@ -19,6 +19,7 @@ namespace ClassicUO.Assets
             Arts = new ArtLoader(this);
             TileData = new TileDataLoader(this);
             Hues = new HuesLoader(this);
+            Texmaps = new TexmapsLoader(this);
         }
 
         public ClientVersion Version { get; }
@@ -28,6 +29,7 @@ namespace ClassicUO.Assets
         public ArtLoader Arts { get; }
         public TileDataLoader TileData { get; }
         public HuesLoader Hues { get; }
+        public TexmapsLoader Texmaps { get; }
 
 
         public void Dispose()
@@ -35,6 +37,7 @@ namespace ClassicUO.Assets
             Arts.Dispose();
             TileData.Dispose();
             Hues.Dispose();
+            Texmaps.Dispose();
         }
 
         public string GetUOFilePath(string file)
@@ -76,7 +79,10 @@ namespace ClassicUO.Assets
             Stopwatch stopwatch = Stopwatch.StartNew();
             
             Arts.Load();
-
+            TileData.Load();
+            Hues.Load();
+            Texmaps.Load();
+            
             ReadArtDefFile();
             
             Console.WriteLine($"Files loaded in: {stopwatch.ElapsedMilliseconds} ms!");

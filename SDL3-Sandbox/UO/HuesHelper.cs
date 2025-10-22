@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 using System.Runtime.CompilerServices;
+using SDL3;
 
 namespace ClassicUO.Utility
 {
@@ -46,37 +47,37 @@ namespace ClassicUO.Utility
             return (ushort) (((c & 0x1F) * 299 + ((c >> 5) & 0x1F) * 587 + ((c >> 10) & 0x1F) * 114) / 1000);
         }
 
-        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        // public static ushort ColorToHue(Color c)
-        // {
-        //     ushort origred = c.R;
-        //     ushort origgreen = c.G;
-        //     ushort origblue = c.B;
-        //     const double scale = 31.0 / 255;
-        //     ushort newred = (ushort) (origred * scale);
-        //
-        //     if (newred == 0 && origred != 0)
-        //     {
-        //         newred = 1;
-        //     }
-        //
-        //     ushort newgreen = (ushort) (origgreen * scale);
-        //
-        //     if (newgreen == 0 && origgreen != 0)
-        //     {
-        //         newgreen = 1;
-        //     }
-        //
-        //     ushort newblue = (ushort) (origblue * scale);
-        //
-        //     if (newblue == 0 && origblue != 0)
-        //     {
-        //         newblue = 1;
-        //     }
-        //
-        //     ushort v = (ushort) ((newred << 10) | (newgreen << 5) | newblue);
-        //
-        //     return v;
-        // }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ushort ColorToHue(SDL.SDL_Color c)
+        {
+            ushort origred = c.r;
+            ushort origgreen = c.g;
+            ushort origblue = c.b;
+            const double scale = 31.0 / 255;
+            ushort newred = (ushort) (origred * scale);
+        
+            if (newred == 0 && origred != 0)
+            {
+                newred = 1;
+            }
+        
+            ushort newgreen = (ushort) (origgreen * scale);
+        
+            if (newgreen == 0 && origgreen != 0)
+            {
+                newgreen = 1;
+            }
+        
+            ushort newblue = (ushort) (origblue * scale);
+        
+            if (newblue == 0 && origblue != 0)
+            {
+                newblue = 1;
+            }
+        
+            ushort v = (ushort) ((newred << 10) | (newgreen << 5) | newblue);
+        
+            return v;
+        }
     }
 }
