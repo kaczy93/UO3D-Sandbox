@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CentrED;
 using ClassicUO.Assets;
 using ClassicUO.Renderer.Arts;
 using ClassicUO.Renderer.Texmaps;
@@ -45,6 +46,8 @@ public class UORenderer : IDisposable
     private IntPtr graphicsPipeline;
     private IntPtr renderPass;
 
+    private Camera camera;
+
     public UORenderer(IntPtr windowHandle, IntPtr gpuDevice)
     {
         this.windowHandle = windowHandle;
@@ -53,6 +56,7 @@ public class UORenderer : IDisposable
 
     public void Init()
     {
+        camera = new Camera();
         Console.WriteLine("Loading UO Assets");
         int maxLandId = 10; //We only need that much for testing
         manager = new UOFileManager(ClientVersion.CV_706400, "/home/kaczy/nel/Ultima Online Classic_7_0_95_0_modified");
@@ -425,11 +429,20 @@ public class UORenderer : IDisposable
             return false; //Window minimized, don't draw
         }
 
+        camera.ScreenSize = new SDL_Rect()
+        {
+            x = 0,
+            y = 0,
+            w = (int)swapchainWidth,
+            h = (int)swapchainHeight
+        };
+
         return true;
     }
 
     public void Update()
     {
+        camera.Update();
     }
 
     public bool BeginDraw()
@@ -468,13 +481,13 @@ public class UORenderer : IDisposable
         };
         SDL_BindGPUVertexBuffers(renderPass, 0, [binding], 1);
 
-        var scale = 0.004f;
+        var x = camera.WorldViewProj;
         float[] mat4 =
         {
-            scale, 0, 0, 0,
-            0, scale, 0, 0,
-            0, 0, scale, 0,
-            0, 0, 0, 1f
+            x.M11, x.M12, x.M13, x.M14,
+            x.M21, x.M22, x.M23, x.M24,
+            x.M31, x.M32, x.M33, x.M34,
+            x.M41, x.M42, x.M43, x.M44
         };
 
         unsafe
