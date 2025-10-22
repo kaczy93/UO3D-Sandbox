@@ -58,7 +58,12 @@ public class UORenderer : IDisposable
 
     public void Init()
     {
+        float rsqrt2 = 0.70710678118654752440084436210485f;
+        float tileSize = 44 * rsqrt2;
         camera = new Camera();
+        camera.Position.X = 768 * 4 * tileSize;
+        camera.Position.Y = 512 * 4 * tileSize;
+        camera.Zoom = 0.01f;
         Console.WriteLine("Loading UO Assets");
         int maxLandId = 10; //We only need that much for testing
         manager = new UOFileManager(ClientVersion.CV_706400, "/home/kaczy/nel/Ultima Online Classic_7_0_95_0_modified");
@@ -66,7 +71,7 @@ public class UORenderer : IDisposable
         art = new Art(gpuDevice, manager.Arts);
         texmap = new Texmap(gpuDevice, manager.Texmaps);
         Console.WriteLine("Loading map");
-        terrain = new Terrain(8, 8);
+        terrain = new Terrain(512, 512);
         terrain.Load(manager.BasePath + "/map0.mul");
         Console.WriteLine("Preloading art");
         var distinctIds = terrain._tiles.Select(t => t.Id).Distinct().ToArray();
@@ -436,6 +441,8 @@ public class UORenderer : IDisposable
         //We don't need these anymore
         SDL_ReleaseGPUShader(gpuDevice, fragmentShader);
         SDL_ReleaseGPUShader(gpuDevice, vertexShader);
+        
+        Console.WriteLine($"Vert count: {(uint)(terrain._tiles.Length * 6)}");
     }
 
     public bool NewFrame()
@@ -464,7 +471,7 @@ public class UORenderer : IDisposable
     public void HandleKeyDown(long elapsedTime, SDL_Keycode key)
     {
         var moveDelta = elapsedTime * 0.000001f;
-        var zoomDelta = elapsedTime * 0.000000001f;
+        var zoomDelta = elapsedTime * 0.0000000001f;
         switch(key)
         {
             case SDL_Keycode.SDLK_UP:
@@ -569,7 +576,7 @@ public class UORenderer : IDisposable
             new SDL_GPUTextureSamplerBinding(){sampler = texSampler, texture = texTex}
         ], 2);
         
-        SDL_DrawGPUPrimitives(renderPass, (uint)(terrain._tiles.Length * 6), (uint)(terrain._tiles.Length * 2), 0, 0);
+        SDL_DrawGPUPrimitives(renderPass, (uint)(terrain._tiles.Length * 6), 1, 0, 0);
     }        
 
     public void EndDraw()
